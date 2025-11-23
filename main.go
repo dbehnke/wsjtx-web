@@ -13,6 +13,7 @@ import (
 	"time"
 	"wsjtx-web/pkg/wsjtx"
 
+	"github.com/gen2brain/malgo"
 	"github.com/gorilla/websocket"
 )
 
@@ -25,16 +26,21 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+type BroadcastMessage struct {
+	Type    int
+	Payload []byte
+}
+
 type Hub struct {
 	clients   map[*websocket.Conn]bool
-	broadcast chan []byte
+	broadcast chan BroadcastMessage
 	mu        sync.Mutex
 }
 
 func newHub() *Hub {
 	return &Hub{
 		clients:   make(map[*websocket.Conn]bool),
-		broadcast: make(chan []byte),
+		broadcast: make(chan BroadcastMessage),
 	}
 }
 
@@ -43,7 +49,7 @@ func (h *Hub) run() {
 		message := <-h.broadcast
 		h.mu.Lock()
 		for client := range h.clients {
-			err := client.WriteMessage(websocket.TextMessage, message)
+			err := client.WriteMessage(message.Type, message.Payload)
 			if err != nil {
 				log.Printf("Websocket error: %v", err)
 				client.Close()
@@ -186,6 +192,36 @@ func main() {
 					BaseMessage: wsjtx.BaseMessage{Id: "WSJTX-WEB"},
 					AutoTxOnly:  d.AutoTxOnly,
 				}
+			case "getAudioDevices":
+				devices, err := audioManager.ListDevices()
+				if err != nil {
+					log.Printf("Error listing devices: %v", err)
+					continue
+				}
+				resp, _ := json.Marshal(struct {
+					Type string      `json:"type"`
+					Data interface{} `json:"data"`
+				}{
+					Type: "audioDevices",
+					Data: devices,
+				})
+				hub.broadcast <- BroadcastMessage{
+					Type:    websocket.TextMessage,
+					Payload: resp,
+				}
+				continue // Don't send to UDP
+			case "setAudioDevice":
+				var d struct {
+					Id string `json:"id"`
+				}
+				if err := json.Unmarshal(cmd.Data, &d); err != nil {
+					log.Printf("Error parsing setAudioDevice data: %v", err)
+					continue
+				}
+				if err := audioManager.Start(d.Id); err != nil {
+					log.Printf("Error setting audio device: %v", err)
+				}
+				continue // Don't send to UDP
 			default:
 				log.Printf("Unknown command type: %s", cmd.Type)
 				continue
@@ -214,6 +250,16 @@ func main() {
 		}
 	}()
 
+	// Audio Capture
+	// Audio Manager
+	if err := initAudioManager(hub); err != nil {
+		log.Println("Failed to init audio manager:", err)
+	}
+	// Start with default device
+	if err := audioManager.Start(""); err != nil {
+		log.Println("Failed to start audio:", err)
+	}
+
 	// UDP Loop
 	buf := make([]byte, 4096)
 	for {
@@ -241,14 +287,115 @@ func main() {
 			Data: msg,
 		}
 
+		// We will change this to send a struct that Hub understands
+		// For now, let's keep it as is, but we need to coordinate with the Audio part.
+		// I'll update Hub in the next step.
+
 		wrappedJson, err := json.Marshal(wrapper)
 		if err == nil {
-			hub.broadcast <- wrappedJson
+			hub.broadcast <- BroadcastMessage{
+				Type:    websocket.TextMessage,
+				Payload: wrappedJson,
+			}
 		}
 
-		switch m := msg.(type) {
-		case *wsjtx.DecodeMessage:
-			fmt.Printf("Decode: %s %s SNR=%d %d\n", m.Mode, m.Message, m.SNR, m.Time)
+	}
+}
+
+// Audio Manager
+type AudioManager struct {
+	ctx         *malgo.AllocatedContext
+	device      *malgo.Device
+	hub         *Hub
+	currentID   string
+	mu          sync.Mutex
+	isCapturing bool
+}
+
+var audioManager *AudioManager
+
+func initAudioManager(hub *Hub) error {
+	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {
+		log.Printf("LOG <%v>\n", message)
+	})
+	if err != nil {
+		return err
+	}
+
+	audioManager = &AudioManager{
+		ctx: ctx,
+		hub: hub,
+	}
+	return nil
+}
+
+func (am *AudioManager) Start(deviceID string) error {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+
+	if am.isCapturing {
+		am.device.Uninit()
+		am.isCapturing = false
+	}
+
+	deviceConfig := malgo.DefaultDeviceConfig(malgo.Capture)
+	deviceConfig.Capture.Format = malgo.FormatS16
+	deviceConfig.Capture.Channels = 1
+	deviceConfig.SampleRate = 12000
+	deviceConfig.Alsa.NoMMap = 1
+
+	if deviceID != "" {
+		infos, err := am.ctx.Devices(malgo.Capture)
+		if err == nil {
+			for _, info := range infos {
+				if info.ID.String() == deviceID {
+					deviceConfig.Capture.DeviceID = info.ID.Pointer()
+					break
+				}
+			}
 		}
 	}
+
+	onRecvFrames := func(pOutputSample, pInputSamples []byte, framecount uint32) {
+		am.hub.broadcast <- BroadcastMessage{
+			Type:    websocket.BinaryMessage,
+			Payload: pInputSamples,
+		}
+	}
+
+	captureCallbacks := malgo.DeviceCallbacks{
+		Data: onRecvFrames,
+	}
+
+	device, err := malgo.InitDevice(am.ctx.Context, deviceConfig, captureCallbacks)
+	if err != nil {
+		return err
+	}
+
+	if err := device.Start(); err != nil {
+		device.Uninit()
+		return err
+	}
+
+	am.device = device
+	am.currentID = deviceID
+	am.isCapturing = true
+	log.Printf("Started audio capture on device: %s", deviceID)
+	return nil
+}
+
+func (am *AudioManager) ListDevices() ([]map[string]string, error) {
+	infos, err := am.ctx.Devices(malgo.Capture)
+	if err != nil {
+		return nil, err
+	}
+
+	var devices []map[string]string
+	for _, info := range infos {
+		devices = append(devices, map[string]string{
+			"id":   info.ID.String(),
+			"name": info.Name(),
+		})
+	}
+	return devices, nil
 }

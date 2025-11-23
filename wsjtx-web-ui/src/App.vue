@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useWsjtxStore } from '@/stores/wsjtx'
-import ControlPanel from '@/components/ControlPanel.vue'
-import BandActivity from '@/components/BandActivity.vue'
+import HomeView from '@/views/HomeView.vue'
 
 const store = useWsjtxStore()
 
@@ -12,40 +11,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="app-container">
-    <header>
-      <h1>WSJT-X Web Interface</h1>
+  <div class="min-h-screen bg-gray-900 text-gray-200 font-sans p-8">
+    <header class="mb-8">
+      <h1 class="text-white font-light text-3xl">WSJT-X Web Interface</h1>
     </header>
 
-    <main>
-      <ControlPanel />
-      <BandActivity />
-    </main>
+    <HomeView />
   </div>
 </template>
-
-<style scoped>
-.app-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 2rem;
-}
-
-header {
-  margin-bottom: 2rem;
-}
-
-h1 {
-  color: #fff;
-  font-weight: 300;
-}
-</style>
-
-<style>
-body {
-  background: #121212;
-  color: #e0e0e0;
-  margin: 0;
-  font-family: 'Inter', sans-serif;
-}
-</style>

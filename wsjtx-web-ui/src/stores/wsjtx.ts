@@ -8,21 +8,45 @@ export const useWsjtxStore = defineStore('wsjtx', () => {
 
     let ws: WebSocket | null = null
 
+    const audioQueue = ref<Float32Array[]>([])
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+
+    const audioDevices = ref<{ id: string, name: string }[]>([])
+
     function connect() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
         ws = new WebSocket(`${protocol}//${window.location.host}/ws`)
+        ws.binaryType = 'arraybuffer'
 
         ws.onopen = () => {
             isConnected.value = true
             console.log('WebSocket connected')
+            // Fetch devices on connect
+            fetchAudioDevices()
         }
 
         ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data)
-                handleMessage(data)
-            } catch (e) {
-                console.error('Error parsing message:', e)
+            if (event.data instanceof ArrayBuffer) {
+                // Audio data (Int16 PCM)
+                const int16Data = new Int16Array(event.data)
+                const float32Data = new Float32Array(int16Data.length)
+                for (let i = 0; i < int16Data.length; i++) {
+                    const sample = int16Data[i]
+                    if (sample !== undefined) {
+                        float32Data[i] = sample / 32768.0
+                    }
+                }
+                audioQueue.value.push(float32Data)
+                if (audioQueue.value.length > 50) {
+                    audioQueue.value.shift() // Keep queue size manageable
+                }
+            } else {
+                try {
+                    const data = JSON.parse(event.data)
+                    handleMessage(data)
+                } catch (e) {
+                    console.error('Error parsing message:', e)
+                }
             }
         }
 
@@ -46,6 +70,8 @@ export const useWsjtxStore = defineStore('wsjtx', () => {
             }
         } else if (msg.type === "1") { // Status
             status.value = msg.data
+        } else if (msg.type === "audioDevices") {
+            audioDevices.value = msg.data
         }
     }
 
@@ -57,5 +83,13 @@ export const useWsjtxStore = defineStore('wsjtx', () => {
         }
     }
 
-    return { isConnected, messages, status, connect, sendMessage }
+    function fetchAudioDevices() {
+        sendMessage('getAudioDevices', {})
+    }
+
+    function setAudioDevice(id: string) {
+        sendMessage('setAudioDevice', { id })
+    }
+
+    return { isConnected, messages, status, connect, sendMessage, audioQueue, audioContext, audioDevices, fetchAudioDevices, setAudioDevice }
 })

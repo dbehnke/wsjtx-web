@@ -35,71 +35,29 @@ function handleReply(msg: any) {
 </script>
 
 <template>
-  <div class="band-activity">
-    <h2>Band Activity</h2>
-    <table>
+  <div class="bg-gray-900 text-gray-300 p-4 rounded-lg overflow-y-auto max-h-[500px]">
+    <h2 class="text-xl mb-4 font-light">Band Activity</h2>
+    <table class="w-full border-collapse font-mono text-sm">
       <thead>
         <tr>
-          <th>Time</th>
-          <th>dB</th>
-          <th>DT</th>
-          <th>Freq</th>
-          <th>Mode</th>
-          <th>Message</th>
+          <th class="p-3 text-left border-b border-gray-700">Time</th>
+          <th class="p-3 text-left border-b border-gray-700">dB</th>
+          <th class="p-3 text-left border-b border-gray-700">DT</th>
+          <th class="p-3 text-left border-b border-gray-700">Freq</th>
+          <th class="p-3 text-left border-b border-gray-700">Mode</th>
+          <th class="p-3 text-left border-b border-gray-700">Message</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(msg, index) in messages" :key="index" @dblclick="handleReply(msg)" class="decode-row">
-          <td>{{ formatTime(msg.Time) }}</td>
-          <td>{{ msg.SNR }}</td>
-          <td>{{ msg.DeltaTime.toFixed(1) }}</td>
-          <td>{{ msg.DeltaFrequency }}</td>
-          <td>{{ msg.Mode }}</td>
-          <td class="message">{{ msg.Message }}</td>
+        <tr v-for="(msg, index) in messages" :key="index" @dblclick="handleReply(msg)" class="cursor-pointer hover:bg-gray-700 even:bg-gray-800 transition-colors">
+          <td class="p-3">{{ formatTime(msg.Time) }}</td>
+          <td class="p-3">{{ msg.SNR }}</td>
+          <td class="p-3">{{ msg.DeltaTime.toFixed(1) }}</td>
+          <td class="p-3">{{ msg.DeltaFrequency }}</td>
+          <td class="p-3">{{ msg.Mode }}</td>
+          <td class="p-3 text-sky-300">{{ msg.Message }}</td>
         </tr>
       </tbody>
     </table>
   </div>
 </template>
-
-<style scoped>
-.band-activity {
-  background: #1e1e1e;
-  color: #d4d4d4;
-  padding: 1rem;
-  border-radius: 8px;
-  overflow-y: auto;
-  max-height: 500px;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: monospace;
-}
-
-th, td {
-  padding: 4px 8px;
-  text-align: left;
-}
-
-th {
-  border-bottom: 1px solid #444;
-}
-
-tr:nth-child(even) {
-  background: #252526;
-}
-
-.message {
-  color: #9cdcfe;
-}
-
-.decode-row {
-  cursor: pointer;
-}
-
-.decode-row:hover {
-  background: #2a2d2e !important;
-}
-</style>
