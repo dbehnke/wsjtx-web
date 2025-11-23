@@ -30,3 +30,14 @@ WSJT-X Web Interface is a remote control and monitoring interface for WSJT-X. It
 - Build frontend: `cd wsjtx-web-ui && npm run build`
 - Build backend: `go build`
 - The backend embeds the `dist` folder from the frontend build.
+
+## Git Workflow
+
+We follow a feature-branch workflow:
+
+1. **Create a Branch**: Always create a new branch for each task or feature.
+    - Naming convention: `type/description` (e.g., `feat/waterfall`, `fix/layout`, `docs/workflow`).
+2. **Commit Changes**: Commit often with clear messages.
+3. **Push & PR**: Push the branch to origin and create a Pull Request (PR) for review.
+    - Do not push directly to `main`.
+4. **Merge**: Merge the PR into `main` after approval.
