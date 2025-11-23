@@ -1,0 +1,28 @@
+# Binaries
+wsjtx-web
+server
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Node
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Go
+go.work
+go.work.sum
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
