@@ -35,10 +35,19 @@ A modern web interface for monitoring and controlling [WSJT-X](https://physics.p
 1. **Start the Backend**:
 
     ```bash
+    # First-time / fresh clone: create a placeholder so go:embed succeeds
+    mkdir -p dist && echo '<!DOCTYPE html><title>wsjtx-web</title>' > dist/index.html
+
     go run main.go
     ```
 
-    The server will start on `http://localhost:8080`.
+    The server listens for WSJT-X UDP on `:2237` and serves HTTP on `http://localhost:8080`.
+
+    If UDP bind fails (e.g. GridTracker already owns `:2237`), pick another port and point WSJT-X at it:
+
+    ```bash
+    go run main.go -udp :2238 -http :8080
+    ```
 
 2. **Start the Frontend** (for development):
 

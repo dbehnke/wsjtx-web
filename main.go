@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/fs"
 	"log"
@@ -61,15 +62,19 @@ func (h *Hub) run() {
 }
 
 func main() {
+	udpAddr := flag.String("udp", ":2237", "UDP address to receive WSJT-X traffic")
+	httpAddr := flag.String("http", ":8080", "HTTP/WebSocket listen address")
+	flag.Parse()
+
 	// UDP Server
-	addr, err := net.ResolveUDPAddr("udp", ":2237")
+	addr, err := net.ResolveUDPAddr("udp", *udpAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("listen udp %s: %v (is another app like GridTracker already bound to this port? use -udp to pick another)", addr, err)
 	}
 	defer conn.Close()
 
@@ -193,6 +198,10 @@ func main() {
 					AutoTxOnly:  d.AutoTxOnly,
 				}
 			case "getAudioDevices":
+				if audioManager == nil {
+					log.Println("Audio manager not available")
+					continue
+				}
 				devices, err := audioManager.ListDevices()
 				if err != nil {
 					log.Printf("Error listing devices: %v", err)
@@ -211,6 +220,10 @@ func main() {
 				}
 				continue // Don't send to UDP
 			case "setAudioDevice":
+				if audioManager == nil {
+					log.Println("Audio manager not available")
+					continue
+				}
 				var d struct {
 					Id string `json:"id"`
 				}
@@ -244,19 +257,16 @@ func main() {
 	})
 
 	go func() {
-		log.Println("Starting HTTP server on :8080...")
-		if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Printf("Starting HTTP server on %s...", *httpAddr)
+		if err := http.ListenAndServe(*httpAddr, nil); err != nil {
 			log.Fatal(err)
 		}
 	}()
 
 	// Audio Capture
-	// Audio Manager
 	if err := initAudioManager(hub); err != nil {
 		log.Println("Failed to init audio manager:", err)
-	}
-	// Start with default device
-	if err := audioManager.Start(""); err != nil {
+	} else if err := audioManager.Start(""); err != nil {
 		log.Println("Failed to start audio:", err)
 	}
 

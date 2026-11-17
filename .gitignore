@@ -8,7 +8,9 @@ server
 
 # Node
 node_modules/
-dist/
+# Keep a tracked placeholder so `go:embed dist` works before a frontend build.
+dist/*
+!dist/index.html
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
