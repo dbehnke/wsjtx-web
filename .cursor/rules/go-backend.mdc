@@ -1,0 +1,15 @@
+---
+description: Go backend conventions for the WSJT-X UDP/WebSocket bridge
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Go backend
+
+- Protocol encode/decode lives in `pkg/wsjtx`. Add table-driven tests there for wire format changes.
+- Keep `main` as wiring; new logic belongs in packages (`internal/…` once the split todo lands).
+- Audio (`malgo`) is optional/noisy — guard nil `audioManager`; prefer feature-flagging over hard dependency.
+- Listen addresses via flags (`-udp`, `-http`), not hard-coded literals.
+- WebSocket: avoid unbounded blocking broadcasts; use deadlines/ping when touching the hub.
+- Do not expand `CheckOrigin: true` into production-trusted CORS without config.
+---

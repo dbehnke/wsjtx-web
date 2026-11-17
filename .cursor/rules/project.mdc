@@ -1,0 +1,16 @@
+---
+description: Core agent workflow and repo constraints for wsjtx-web
+alwaysApply: true
+---
+
+# wsjtx-web — agent defaults
+
+- Read `AGENTS.md` first, then execute the next open item in `todo/00-overview.md`.
+- Feature work: branch `type/description`, PR into `main` — do not push features straight to `main`.
+- One todo/plan per PR when practical. Update the plan file status when done.
+- Do not commit `node_modules/`, built `dist/assets`, binaries, or secrets.
+- Do not run `npm audit fix --force` (can downgrade Vite).
+- Prefer scoped diffs; no unrelated refactors.
+- GridTracker often owns UDP `:2237` — use `-udp` / document port changes.
+- `go:embed dist` requires `dist/index.html` (placeholder is tracked).
+---

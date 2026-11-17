@@ -2,6 +2,8 @@
 
 A modern web interface for monitoring and controlling [WSJT-X](https://physics.princeton.edu/pulsar/k1jt/wsjtx.html) remotely.
 
+**AI / agent contributors:** start at [`AGENTS.md`](./AGENTS.md) and work the queue in [`todo/`](./todo/).
+
 ## Features
 
 - **Real-time Monitoring**: View decodes and band activity in real-time.

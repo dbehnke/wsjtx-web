@@ -1,0 +1,15 @@
+---
+description: Vue frontend conventions for wsjtx-web-ui
+globs: "wsjtx-web-ui/**/*.{vue,ts}"
+alwaysApply: false
+---
+
+# Vue frontend (`wsjtx-web-ui`)
+
+- Real app entry: `App.vue` → `HomeView` → `BandActivity` / `ControlPanel` / `WaterfallDisplay`.
+- State and WS live in `src/stores/wsjtx.ts`. Prefer typed messages over `any` when touching the store.
+- Wire types today: `"1"` status, `"2"` decode; commands: `reply`, `halt`, `getAudioDevices`, `setAudioDevice`.
+- Ignore / delete scaffold leftovers when touching UI: `HelloWorld`, `TheWelcome`, `WelcomeItem`, icon pack, `stores/counter.ts`, `AboutView` (see purge todo).
+- Vite build writes to `../dist` for Go embed. Dev: `npm run dev` on `:5173`.
+- Do not add new heavy Node deps without need; long-term direction may leave the SPA (see frontend migration todo).
+---
