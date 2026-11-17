@@ -18,6 +18,10 @@ Work top to bottom. Skip only if blocked and note why.
 - [ ] `09-status-and-controls-parity.md` — Richer status + Enable Tx / config commands
 - [ ] `10-waterfall-reliability.md` — Fix streaming FFT/waterfall path
 
+## Ops
+
+- [ ] `12-containerize.md` — Dockerfile / Compose multi-stage image (UI build + Go embed)
+
 ## Longer-term direction
 
 - [ ] `11-frontend-go-htmx-migration.md` — Optional move off Node SPA toward Go-served UI
