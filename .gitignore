@@ -1,6 +1,6 @@
 # Binaries
 wsjtx-web
-server
+/server
 *.exe
 *.dll
 *.so

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -9,64 +8,24 @@ import (
 	"io/fs"
 	"log"
 	"net"
-	"net/http"
-	"sync"
-	"time"
+
+	"wsjtx-web/internal/audio"
+	"wsjtx-web/internal/hub"
+	"wsjtx-web/internal/server"
 	"wsjtx-web/pkg/wsjtx"
 
-	"github.com/gen2brain/malgo"
 	"github.com/gorilla/websocket"
 )
 
 //go:embed dist
 var distFS embed.FS
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for now
-	},
-}
-
-type BroadcastMessage struct {
-	Type    int
-	Payload []byte
-}
-
-type Hub struct {
-	clients   map[*websocket.Conn]bool
-	broadcast chan BroadcastMessage
-	mu        sync.Mutex
-}
-
-func newHub() *Hub {
-	return &Hub{
-		clients:   make(map[*websocket.Conn]bool),
-		broadcast: make(chan BroadcastMessage),
-	}
-}
-
-func (h *Hub) run() {
-	for {
-		message := <-h.broadcast
-		h.mu.Lock()
-		for client := range h.clients {
-			err := client.WriteMessage(message.Type, message.Payload)
-			if err != nil {
-				log.Printf("Websocket error: %v", err)
-				client.Close()
-				delete(h.clients, client)
-			}
-		}
-		h.mu.Unlock()
-	}
-}
-
 func main() {
 	udpAddr := flag.String("udp", ":2237", "UDP address to receive WSJT-X traffic")
 	httpAddr := flag.String("http", ":8080", "HTTP/WebSocket listen address")
+	enableAudio := flag.Bool("audio", false, "Enable audio capture for waterfall (malgo/CGO)")
 	flag.Parse()
 
-	// UDP Server
 	addr, err := net.ResolveUDPAddr("udp", *udpAddr)
 	if err != nil {
 		log.Fatal(err)
@@ -80,197 +39,41 @@ func main() {
 
 	log.Printf("Listening for WSJT-X on %s...", addr)
 
-	// WebSocket Hub
-	hub := newHub()
-	go hub.run()
+	h := hub.New()
+	go h.Run()
 
-	// HTTP Server
-	// Strip the "dist" prefix from the embedded filesystem
 	fsys, err := fs.Sub(distFS, "dist")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	http.Handle("/", http.FileServer(http.FS(fsys)))
-	// UDP Loop
-	var lastAddr *net.UDPAddr
-	var addrMu sync.Mutex
+	addrs := &server.AddrStore{}
 
-	// Handle WebSocket messages
-	go func() {
-		for {
-			// We need a way to receive messages from clients and send them to UDP.
-			// The current Hub implementation only broadcasts FROM UDP TO Clients.
-			// We need to change how we handle client messages.
-			// Let's iterate over clients and read? No, that's blocking.
-			// The client reading loop is already there:
-			/*
-				for {
-					_, _, err := ws.ReadMessage()
-					if err != nil { ... break }
-				}
-			*/
-			// We should change that loop to actually parse the message.
-			time.Sleep(1 * time.Second)
-		}
-	}()
-
-	// We need to modify the WebSocket handler to process incoming messages
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		ws, err := upgrader.Upgrade(w, r, nil)
+	var audioMgr *audio.Manager
+	if *enableAudio {
+		audioMgr, err = audio.New(h)
 		if err != nil {
-			log.Println("Upgrade error:", err)
-			return
+			log.Println("Failed to init audio manager:", err)
+		} else if err := audioMgr.Start(""); err != nil {
+			log.Println("Failed to start audio:", err)
 		}
-		defer ws.Close()
-
-		hub.mu.Lock()
-		hub.clients[ws] = true
-		hub.mu.Unlock()
-
-		// Keep connection alive and read messages
-		for {
-			_, message, err := ws.ReadMessage()
-			if err != nil {
-				hub.mu.Lock()
-				delete(hub.clients, ws)
-				hub.mu.Unlock()
-				break
-			}
-
-			// Parse command from frontend
-			var cmd struct {
-				Type string          `json:"type"`
-				Data json.RawMessage `json:"data"`
-			}
-			if err := json.Unmarshal(message, &cmd); err != nil {
-				log.Printf("Error parsing command: %v", err)
-				continue
-			}
-
-			addrMu.Lock()
-			targetAddr := lastAddr
-			addrMu.Unlock()
-
-			if targetAddr == nil {
-				log.Println("No WSJT-X instance seen yet, cannot send command")
-				continue
-			}
-
-			var msg wsjtx.Message
-			switch cmd.Type {
-			case "reply":
-				var d struct {
-					Time      uint32  `json:"Time"`
-					SNR       int32   `json:"SNR"`
-					DeltaTime float64 `json:"DeltaTime"`
-					DeltaFreq uint32  `json:"DeltaFrequency"`
-					Mode      string  `json:"Mode"`
-					Message   string  `json:"Message"`
-					LowConf   bool    `json:"LowConfidence"`
-					Modifiers uint8   `json:"Modifiers"`
-				}
-				if err := json.Unmarshal(cmd.Data, &d); err != nil {
-					log.Printf("Error parsing reply data: %v", err)
-					continue
-				}
-				msg = &wsjtx.ReplyMessage{
-					BaseMessage: wsjtx.BaseMessage{Id: "WSJTX-WEB"},
-					Time:        d.Time,
-					SNR:         d.SNR,
-					DeltaTime:   d.DeltaTime,
-					DeltaFreq:   d.DeltaFreq,
-					Mode:        d.Mode,
-					Message:     d.Message,
-					LowConf:     d.LowConf,
-					Modifiers:   d.Modifiers,
-				}
-			case "halt":
-				var d struct {
-					AutoTxOnly bool `json:"AutoTxOnly"`
-				}
-				if err := json.Unmarshal(cmd.Data, &d); err != nil {
-					log.Printf("Error parsing halt data: %v", err)
-					continue
-				}
-				msg = &wsjtx.HaltTxMessage{
-					BaseMessage: wsjtx.BaseMessage{Id: "WSJTX-WEB"},
-					AutoTxOnly:  d.AutoTxOnly,
-				}
-			case "getAudioDevices":
-				if audioManager == nil {
-					log.Println("Audio manager not available")
-					continue
-				}
-				devices, err := audioManager.ListDevices()
-				if err != nil {
-					log.Printf("Error listing devices: %v", err)
-					continue
-				}
-				resp, _ := json.Marshal(struct {
-					Type string      `json:"type"`
-					Data interface{} `json:"data"`
-				}{
-					Type: "audioDevices",
-					Data: devices,
-				})
-				hub.broadcast <- BroadcastMessage{
-					Type:    websocket.TextMessage,
-					Payload: resp,
-				}
-				continue // Don't send to UDP
-			case "setAudioDevice":
-				if audioManager == nil {
-					log.Println("Audio manager not available")
-					continue
-				}
-				var d struct {
-					Id string `json:"id"`
-				}
-				if err := json.Unmarshal(cmd.Data, &d); err != nil {
-					log.Printf("Error parsing setAudioDevice data: %v", err)
-					continue
-				}
-				if err := audioManager.Start(d.Id); err != nil {
-					log.Printf("Error setting audio device: %v", err)
-				}
-				continue // Don't send to UDP
-			default:
-				log.Printf("Unknown command type: %s", cmd.Type)
-				continue
-			}
-
-			// Encode and send
-			var buf bytes.Buffer
-			encoder := wsjtx.NewEncoder(&buf)
-			if err := encoder.Encode(msg); err != nil {
-				log.Printf("Error encoding message: %v", err)
-				continue
-			}
-
-			if _, err := conn.WriteToUDP(buf.Bytes(), targetAddr); err != nil {
-				log.Printf("Error sending UDP: %v", err)
-			} else {
-				log.Printf("Sent %s to %s", cmd.Type, targetAddr)
-			}
-		}
-	})
+	} else {
+		log.Println("Audio capture disabled (pass -audio to enable waterfall capture)")
+	}
 
 	go func() {
-		log.Printf("Starting HTTP server on %s...", *httpAddr)
-		if err := http.ListenAndServe(*httpAddr, nil); err != nil {
+		if err := server.Start(server.Config{
+			Addr:     *httpAddr,
+			StaticFS: fsys,
+			Hub:      h,
+			UDPConn:  conn,
+			Addrs:    addrs,
+			Audio:    audioMgr,
+		}); err != nil {
 			log.Fatal(err)
 		}
 	}()
 
-	// Audio Capture
-	if err := initAudioManager(hub); err != nil {
-		log.Println("Failed to init audio manager:", err)
-	} else if err := audioManager.Start(""); err != nil {
-		log.Println("Failed to start audio:", err)
-	}
-
-	// UDP Loop
 	buf := make([]byte, 4096)
 	for {
 		n, remoteAddr, err := conn.ReadFromUDP(buf)
@@ -279,16 +82,13 @@ func main() {
 			continue
 		}
 
-		addrMu.Lock()
-		lastAddr = remoteAddr
-		addrMu.Unlock()
+		addrs.Set(remoteAddr)
 
 		msg, err := wsjtx.ParsePacket(buf[:n])
 		if err != nil {
 			continue
 		}
 
-		// Broadcast to WebSockets
 		wrapper := struct {
 			Type string      `json:"type"`
 			Data interface{} `json:"data"`
@@ -297,115 +97,12 @@ func main() {
 			Data: msg,
 		}
 
-		// We will change this to send a struct that Hub understands
-		// For now, let's keep it as is, but we need to coordinate with the Audio part.
-		// I'll update Hub in the next step.
-
-		wrappedJson, err := json.Marshal(wrapper)
+		wrappedJSON, err := json.Marshal(wrapper)
 		if err == nil {
-			hub.broadcast <- BroadcastMessage{
+			h.Broadcast(hub.BroadcastMessage{
 				Type:    websocket.TextMessage,
-				Payload: wrappedJson,
-			}
-		}
-
-	}
-}
-
-// Audio Manager
-type AudioManager struct {
-	ctx         *malgo.AllocatedContext
-	device      *malgo.Device
-	hub         *Hub
-	currentID   string
-	mu          sync.Mutex
-	isCapturing bool
-}
-
-var audioManager *AudioManager
-
-func initAudioManager(hub *Hub) error {
-	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {
-		log.Printf("LOG <%v>\n", message)
-	})
-	if err != nil {
-		return err
-	}
-
-	audioManager = &AudioManager{
-		ctx: ctx,
-		hub: hub,
-	}
-	return nil
-}
-
-func (am *AudioManager) Start(deviceID string) error {
-	am.mu.Lock()
-	defer am.mu.Unlock()
-
-	if am.isCapturing {
-		am.device.Uninit()
-		am.isCapturing = false
-	}
-
-	deviceConfig := malgo.DefaultDeviceConfig(malgo.Capture)
-	deviceConfig.Capture.Format = malgo.FormatS16
-	deviceConfig.Capture.Channels = 1
-	deviceConfig.SampleRate = 12000
-	deviceConfig.Alsa.NoMMap = 1
-
-	if deviceID != "" {
-		infos, err := am.ctx.Devices(malgo.Capture)
-		if err == nil {
-			for _, info := range infos {
-				if info.ID.String() == deviceID {
-					deviceConfig.Capture.DeviceID = info.ID.Pointer()
-					break
-				}
-			}
+				Payload: wrappedJSON,
+			})
 		}
 	}
-
-	onRecvFrames := func(pOutputSample, pInputSamples []byte, framecount uint32) {
-		am.hub.broadcast <- BroadcastMessage{
-			Type:    websocket.BinaryMessage,
-			Payload: pInputSamples,
-		}
-	}
-
-	captureCallbacks := malgo.DeviceCallbacks{
-		Data: onRecvFrames,
-	}
-
-	device, err := malgo.InitDevice(am.ctx.Context, deviceConfig, captureCallbacks)
-	if err != nil {
-		return err
-	}
-
-	if err := device.Start(); err != nil {
-		device.Uninit()
-		return err
-	}
-
-	am.device = device
-	am.currentID = deviceID
-	am.isCapturing = true
-	log.Printf("Started audio capture on device: %s", deviceID)
-	return nil
-}
-
-func (am *AudioManager) ListDevices() ([]map[string]string, error) {
-	infos, err := am.ctx.Devices(malgo.Capture)
-	if err != nil {
-		return nil, err
-	}
-
-	var devices []map[string]string
-	for _, info := range infos {
-		devices = append(devices, map[string]string{
-			"id":   info.ID.String(),
-			"name": info.Name(),
-		})
-	}
-	return devices, nil
 }

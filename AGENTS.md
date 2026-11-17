@@ -24,6 +24,9 @@ go run main.go
 # If UDP :2237 is taken (often GridTracker):
 go run main.go -udp :2238 -http :8080
 
+# Optional: enable malgo capture for waterfall (default is off)
+go run main.go -audio
+
 # Frontend dev server
 cd wsjtx-web-ui && npm install && npm run dev
 ```
@@ -31,6 +34,7 @@ cd wsjtx-web-ui && npm install && npm run dev
 - Backend HTTP: `http://localhost:8080`
 - Vite UI: `http://localhost:5173`
 - WSJT-X must send UDP to whatever `-udp` address is in use; enable **Accept UDP requests** for reply/halt.
+- Waterfall needs `-audio`; without it, `getAudioDevices` / `setAudioDevice` return an empty list / no-op.
 
 See README **Using with GridTracker** for coexistence.
 
@@ -74,7 +78,7 @@ Documented in `todo/` (do not invent a conflicting long-term plan):
 
 - `//go:embed dist` fails if `dist/` is missing — keep placeholder `dist/index.html`.  
 - GridTracker binds `:2237` — use `-udp` and document WSJT-X port changes.  
-- `audioManager` can be nil if malgo init fails — guard before use.  
+- Audio is opt-in (`-audio`); without it `audio.Manager` is nil — guard before use.  
 - Message types on the wire are stringified ints (`"1"` status, `"2"` decode) plus named commands (`reply`, `halt`, `getAudioDevices`, …).
 
 ## Cursor rules

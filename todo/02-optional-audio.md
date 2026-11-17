@@ -1,6 +1,6 @@
 # 02 — Optional audio
 
-Status: `todo`  
+Status: `done`  
 Priority: P0  
 Depends on: `01-split-go-packages.md` (ideal), can be partial before
 
@@ -35,9 +35,9 @@ Audio complicates startup, adds CGO surface, and is only needed for waterfall. M
 
 ## Acceptance
 
-- [ ] Default run does not init malgo
-- [ ] `-audio` restores previous capture behavior
-- [ ] No nil pointer paths on device commands when disabled
+- [x] Default run does not init malgo
+- [x] `-audio` restores previous capture behavior
+- [x] No nil pointer paths on device commands when disabled
 
 ## Key files
 

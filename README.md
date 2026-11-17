@@ -101,6 +101,12 @@ wsjtx-web will listen on `:2237` and serve the UI on `http://localhost:8080`.
     go run main.go -udp :2238 -http :8080
     ```
 
+    Audio capture for the waterfall is **off by default** (avoids malgo/PulseAudio noise). Enable it when you need the waterfall:
+
+    ```bash
+    go run main.go -audio
+    ```
+
 2. **Start the Frontend** (for development):
 
     ```bash

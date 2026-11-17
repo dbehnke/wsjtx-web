@@ -1,6 +1,6 @@
 # 01 — Split Go packages
 
-Status: `todo`  
+Status: `done`  
 Priority: P0 (foundation)
 
 ## Goal
@@ -35,10 +35,12 @@ Break `main.go` into focused packages so UDP, WebSocket hub, HTTP, and audio can
 
 ## Acceptance
 
-- [ ] `main.go` is thin wiring (< ~80 lines ideal)
-- [ ] `go build` and `go test ./...` pass
-- [ ] Existing flags still work
-- [ ] No behavior change for decode broadcast / reply / halt
+- [x] `main.go` is thin wiring (< ~80 lines ideal)
+- [x] `go build` and `go test ./...` pass
+- [x] Existing flags still work
+- [x] No behavior change for decode broadcast / reply / halt
+
+Note: `main.go` landed ~108 lines (flags + UDP loop + optional audio wiring); hub/audio/HTTP live under `internal/`.
 
 ## Key files
 
